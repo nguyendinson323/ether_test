@@ -1,7 +1,6 @@
-class TokenDashboard {
+class SimpleTokenDashboard {
     constructor() {
         this.provider = null;
-        this.signer = null;
         this.userAddress = null;
         this.isConnected = false;
         this.pendingTransactions = new Set();
@@ -74,9 +73,8 @@ class TokenDashboard {
                 return;
             }
 
-            this.provider = new ethers.providers.Web3Provider(window.ethereum);
-            this.signer = this.provider.getSigner();
-            this.userAddress = await this.signer.getAddress();
+            this.provider = window.ethereum;
+            this.userAddress = accounts[0];
             this.isConnected = true;
 
             this.updateConnectionStatus();
@@ -97,7 +95,6 @@ class TokenDashboard {
 
     disconnect() {
         this.provider = null;
-        this.signer = null;
         this.userAddress = null;
         this.isConnected = false;
         this.updateConnectionStatus();
@@ -128,10 +125,17 @@ class TokenDashboard {
             refreshBtn.classList.add('loading');
             refreshBtn.disabled = true;
 
-            const balance = await this.provider.getBalance(this.userAddress);
-            const balanceInEth = ethers.utils.formatEther(balance);
+            // Get balance using direct Web3 calls
+            const balanceHex = await window.ethereum.request({
+                method: 'eth_getBalance',
+                params: [this.userAddress, 'latest']
+            });
 
-            this.updateBalanceDisplay(balanceInEth);
+            // Convert from hex to decimal and then to ETH
+            const balanceWei = parseInt(balanceHex, 16);
+            const balanceEth = balanceWei / Math.pow(10, 18);
+
+            this.updateBalanceDisplay(balanceEth.toString());
 
             refreshBtn.classList.remove('loading');
             refreshBtn.disabled = false;
@@ -176,19 +180,27 @@ class TokenDashboard {
             sendButton.disabled = true;
             sendButton.textContent = 'Sending...';
 
-            const tx = await this.signer.sendTransaction({
-                to: recipientAddress,
-                value: ethers.utils.parseEther(transferAmount)
+            // Convert ETH to Wei (multiply by 10^18)
+            const amountWei = Math.floor(parseFloat(transferAmount) * Math.pow(10, 18));
+            const amountHex = '0x' + amountWei.toString(16);
+
+            const txHash = await window.ethereum.request({
+                method: 'eth_sendTransaction',
+                params: [{
+                    from: this.userAddress,
+                    to: recipientAddress,
+                    value: amountHex,
+                }],
             });
 
-            this.showNotification(`Transaction sent! Hash: ${tx.hash.slice(0, 10)}...`, 'info');
-            this.addTransactionToList(tx.hash, 'pending', transferAmount, recipientAddress);
+            this.showNotification(`Transaction sent! Hash: ${txHash.slice(0, 10)}...`, 'info');
+            this.addTransactionToList(txHash, 'pending', transferAmount, recipientAddress);
 
             // Add to pending transactions for monitoring
-            this.pendingTransactions.add(tx.hash);
+            this.pendingTransactions.add(txHash);
 
             // Wait for confirmation in background
-            this.waitForTransactionConfirmation(tx.hash);
+            this.waitForTransactionConfirmation(txHash);
 
             // Clear form
             document.getElementById('transferForm').reset();
@@ -206,20 +218,43 @@ class TokenDashboard {
         try {
             this.showNotification('Waiting for transaction confirmation...', 'info');
 
-            const receipt = await this.provider.waitForTransaction(txHash, 1);
+            // Poll for transaction receipt
+            let receipt = null;
+            let attempts = 0;
+            const maxAttempts = 60; // Wait up to 5 minutes
 
-            if (receipt.status === 1) {
-                this.showNotification('Transaction confirmed! Balance updated.', 'success');
-                this.updateTransactionStatus(txHash, 'confirmed');
+            while (!receipt && attempts < maxAttempts) {
+                try {
+                    receipt = await window.ethereum.request({
+                        method: 'eth_getTransactionReceipt',
+                        params: [txHash]
+                    });
 
-                // Automatically update balance after confirmation
-                await this.updateBalance();
-            } else {
-                this.showNotification('Transaction failed', 'error');
-                this.updateTransactionStatus(txHash, 'failed');
+                    if (receipt) {
+                        if (receipt.status === '0x1') {
+                            this.showNotification('Transaction confirmed! Balance updated.', 'success');
+                            this.updateTransactionStatus(txHash, 'confirmed');
+                            await this.updateBalance();
+                        } else {
+                            this.showNotification('Transaction failed', 'error');
+                            this.updateTransactionStatus(txHash, 'failed');
+                        }
+                        this.pendingTransactions.delete(txHash);
+                        break;
+                    }
+                } catch (error) {
+                    // Transaction not yet mined
+                }
+
+                attempts++;
+                await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
             }
 
-            this.pendingTransactions.delete(txHash);
+            if (!receipt && attempts >= maxAttempts) {
+                this.showNotification('Transaction confirmation timeout', 'error');
+                this.updateTransactionStatus(txHash, 'pending');
+            }
+
         } catch (error) {
             console.error('Error waiting for transaction:', error);
             this.showNotification('Error monitoring transaction', 'error');
@@ -266,10 +301,15 @@ class TokenDashboard {
             if (this.pendingTransactions.size > 0 && this.isConnected) {
                 for (const txHash of this.pendingTransactions) {
                     try {
-                        const receipt = await this.provider.getTransactionReceipt(txHash);
+                        const receipt = await window.ethereum.request({
+                            method: 'eth_getTransactionReceipt',
+                            params: [txHash]
+                        });
+
                         if (receipt) {
-                            if (receipt.status === 1) {
+                            if (receipt.status === '0x1') {
                                 this.updateTransactionStatus(txHash, 'confirmed');
+                                this.showNotification('Transaction confirmed! Balance updated.', 'success');
                                 await this.updateBalance();
                             } else {
                                 this.updateTransactionStatus(txHash, 'failed');
@@ -282,34 +322,6 @@ class TokenDashboard {
                 }
             }
         }, 10000);
-
-        // Also listen for new blocks to check for confirmations
-        if (this.provider) {
-            this.provider.on('block', async (blockNumber) => {
-                if (this.pendingTransactions.size > 0) {
-                    for (const txHash of this.pendingTransactions) {
-                        try {
-                            const receipt = await this.provider.getTransactionReceipt(txHash);
-                            if (receipt && receipt.blockNumber) {
-                                const confirmations = blockNumber - receipt.blockNumber;
-                                if (confirmations >= 1) {
-                                    if (receipt.status === 1) {
-                                        this.updateTransactionStatus(txHash, 'confirmed');
-                                        this.showNotification('Transaction confirmed! Balance updated.', 'success');
-                                        await this.updateBalance();
-                                    } else {
-                                        this.updateTransactionStatus(txHash, 'failed');
-                                    }
-                                    this.pendingTransactions.delete(txHash);
-                                }
-                            }
-                        } catch (error) {
-                            console.error('Error checking transaction in new block:', error);
-                        }
-                    }
-                }
-            });
-        }
     }
 
     showNotification(message, type = 'info') {
@@ -330,18 +342,5 @@ class TokenDashboard {
 
 // Initialize the dashboard when the page loads
 document.addEventListener('DOMContentLoaded', () => {
-    // Wait for ethers to load
-    if (typeof ethers === 'undefined') {
-        setTimeout(() => {
-            if (typeof ethers !== 'undefined') {
-                new TokenDashboard();
-            } else {
-                document.getElementById('tokenBalance').textContent = 'Error';
-                document.getElementById('statusText').textContent = 'Library Load Failed';
-                console.error('Ethers.js failed to load');
-            }
-        }, 1000);
-    } else {
-        new TokenDashboard();
-    }
+    new SimpleTokenDashboard();
 });
