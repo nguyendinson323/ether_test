@@ -1,0 +1,19 @@
+{
+  "name": "token-balance-dashboard",
+  "version": "1.0.0",
+  "description": "Dashboard with automatic token balance updates after blockchain transactions",
+  "main": "index.js",
+  "scripts": {
+    "start": "live-server --port=8080",
+    "dev": "live-server --port=8080"
+  },
+  "dependencies": {
+    "ethers": "^6.8.0"
+  },
+  "devDependencies": {
+    "live-server": "^1.2.2"
+  },
+  "keywords": ["blockchain", "web3", "ethereum", "token", "dashboard"],
+  "author": "",
+  "license": "MIT"
+}

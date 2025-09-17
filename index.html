@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Token Balance Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Token Balance Dashboard</h1>
+            <div class="connection-status" id="connectionStatus">
+                <span class="status-dot" id="statusDot"></span>
+                <span id="statusText">Not Connected</span>
+            </div>
+        </header>
+
+        <main>
+            <div class="dashboard-card">
+                <h2>Your Token Balance</h2>
+                <div class="balance-display">
+                    <span class="balance-amount" id="tokenBalance">0.00</span>
+                    <span class="balance-symbol">ETH</span>
+                </div>
+                <button id="refreshBalance" class="btn btn-secondary">Refresh Balance</button>
+            </div>
+
+            <div class="dashboard-card">
+                <h2>Send Tokens</h2>
+                <form id="transferForm">
+                    <div class="form-group">
+                        <label for="recipientAddress">Recipient Address:</label>
+                        <input type="text" id="recipientAddress" placeholder="0x..." required>
+                    </div>
+                    <div class="form-group">
+                        <label for="transferAmount">Amount (ETH):</label>
+                        <input type="number" id="transferAmount" step="0.001" min="0" placeholder="0.1" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary" id="sendButton">Send Transaction</button>
+                </form>
+            </div>
+
+            <div class="dashboard-card">
+                <h2>Recent Transactions</h2>
+                <div id="transactionList" class="transaction-list">
+                    <p class="no-transactions">No recent transactions</p>
+                </div>
+            </div>
+        </main>
+
+        <div id="notification" class="notification hidden"></div>
+    </div>
+
+    <script src="https://cdn.ethers.io/lib/ethers-5.7.2.umd.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
