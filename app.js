@@ -16,6 +16,10 @@ class TokenDashboard {
     }
 
     setupEventListeners() {
+        document.getElementById('connectWallet').addEventListener('click', () => {
+            this.connectWallet();
+        });
+
         document.getElementById('refreshBalance').addEventListener('click', () => {
             this.updateBalance();
         });
@@ -44,12 +48,19 @@ class TokenDashboard {
     async connectWallet() {
         try {
             if (typeof window.ethereum === 'undefined') {
-                this.showNotification('Please install MetaMask to use this application', 'error');
+                this.showNotification('Please install MetaMask browser extension first!', 'error');
+                document.getElementById('connectWallet').style.display = 'block';
                 return;
             }
 
             // Request account access
-            await window.ethereum.request({ method: 'eth_requestAccounts' });
+            const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+
+            if (accounts.length === 0) {
+                this.showNotification('No accounts found. Please unlock MetaMask', 'error');
+                document.getElementById('connectWallet').style.display = 'block';
+                return;
+            }
 
             this.provider = new ethers.providers.Web3Provider(window.ethereum);
             this.signer = this.provider.getSigner();
@@ -59,10 +70,16 @@ class TokenDashboard {
             this.updateConnectionStatus();
             await this.updateBalance();
 
+            document.getElementById('connectWallet').style.display = 'none';
             this.showNotification('Wallet connected successfully!', 'success');
         } catch (error) {
             console.error('Error connecting wallet:', error);
-            this.showNotification('Failed to connect wallet', 'error');
+            if (error.code === 4001) {
+                this.showNotification('Connection rejected by user', 'error');
+            } else {
+                this.showNotification('Failed to connect wallet: ' + error.message, 'error');
+            }
+            document.getElementById('connectWallet').style.display = 'block';
         }
     }
 
@@ -73,6 +90,7 @@ class TokenDashboard {
         this.isConnected = false;
         this.updateConnectionStatus();
         this.updateBalanceDisplay('0.00');
+        document.getElementById('connectWallet').style.display = 'block';
     }
 
     updateConnectionStatus() {
