@@ -11,7 +11,19 @@ class TokenDashboard {
 
     async init() {
         this.setupEventListeners();
-        await this.connectWallet();
+
+        // Check if MetaMask is available and try auto-connect
+        if (typeof window.ethereum !== 'undefined') {
+            try {
+                const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+                if (accounts.length > 0) {
+                    await this.connectWallet();
+                }
+            } catch (error) {
+                console.log('No auto-connection available');
+            }
+        }
+
         this.startTransactionMonitoring();
     }
 
